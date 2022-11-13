@@ -3,14 +3,12 @@
 getgenv().radar_hack = true
 
 local game_client = {}
-do
-    for i,v in next, getgc(true) do
-        if typeof(v) == "table" then
-            if rawget(v, 'goingLoud') and rawget(v, 'isInSight') then
-                game_client.spotting = v
-            elseif rawget(v, "getCharacterObject") then
-                game_client.character_controller = v
-            end
+for i,v in next, getgc(true) do
+    if typeof(v) == "table" then
+        if rawget(v, 'goingLoud') and rawget(v, 'isInSight') then
+            game_client.spotting = v
+        elseif rawget(v, "getCharacterObject") then
+            game_client.character_controller = v
         end
     end
 end
