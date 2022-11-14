@@ -62,7 +62,7 @@ do -- ESP
         if entry then
             local third_person_object = entry._thirdPersonObject
             if third_person_object then
-                return third_person_object._characterHash.head.Parent
+                return third_person_object._character
             end
         end
     end
