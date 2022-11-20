@@ -16,7 +16,7 @@ for i,v in next, lines do
   
   local line_split = v:split(":")
   if string.find(v[1], tostring(local_player.UserId)) then
-    clock_offset = line_split[2]
+    clock_offset = tonumber(line_split[2])
     found_hash = true
   end
 end
