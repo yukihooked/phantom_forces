@@ -25,6 +25,8 @@ do -- Client Collector
                 game_client.replication_object = v
             elseif rawget(v, "getController") then -- Weapon Detection
                 game_client.weapon_controller_interface = v
+            elseif rawget(v, "getCharacterModel") and rawget(v, 'popCharacterModel') then -- Used for Displaying other Characters
+                game_client.third_person_object = v
             end
         end
     end
@@ -37,6 +39,8 @@ do -- Client Collector
             game_client.game_clock = require(v)
         elseif v.Name == "PlayerDataStoreClient" then
             game_client.player_data = require(v)
+        elseif v.Name == "ContentDatabase" then
+            game_client.content_database = require(v)
         end
     end
 end
@@ -1280,6 +1284,7 @@ do
     
     do -- third person
         section_settings:Toggle({name = "enabled", default = false, pointer = "third_person"})
+        section_settings:Slider({name = "third person x", default = 0, max = 10, min = -10, tick = 0.1, pointer = "third_person_x"})
         section_settings:Slider({name = "third person y", default = 0, max = 10, min = -10, tick = 0.1, pointer = "third_person_y"})
         section_settings:Slider({name = "third person z", default = 5, max = 10, min = -10, tick = 0.1, pointer = "third_person_z"})
     end
@@ -1333,6 +1338,13 @@ do -- Hooks
         end
     
         if command == "spawn" then
+            local third_person_object = fake_rep_object:getThirdPersonObject()
+            if third_person_object then
+                local character_model = third_person_object:popCharacterModel()
+                character_model:Destroy()
+                fake_rep_object:despawn()
+            end
+
             local current_loadout = game_client.active_loadout.getActiveLoadoutData(game_client.player_data.getPlayerData())
             fake_rep_object:spawn(nil, current_loadout)
         end
@@ -1340,23 +1352,77 @@ do -- Hooks
         if command == "forcereset" then
             local third_person_object = fake_rep_object:getThirdPersonObject()
             if third_person_object then
-                local character_model = third_person_object:popCharacterModel()
+                local character_model = third_person_object._character
                 character_model:Destroy()
                 fake_rep_object:despawn()
+            end
+        end
+
+        if command == "newbullets" then
+            local third_person_object = fake_rep_object:getThirdPersonObject()
+            if third_person_object then
+                third_person_object:kickWeapon()
+            end
+        end
+
+        if command == "swapweapon" then
+            local third_person_object = fake_rep_object:getThirdPersonObject()
+            if third_person_object then
+                local weapon_index = arguments[2]
+                local weapon_dropped = arguments[1]
+
+                if weapon_index < 3 then
+                    fake_rep_object._activeWeaponRegistry[weapon_index] = {
+                        weaponName = weapon_dropped.Gun.Value,
+                        weaponData = game_client.content_database.getWeaponData(weapon_dropped.Gun.Value),
+                    }
+                else
+                    fake_rep_object._activeWeaponRegistry[weapon_index] = {
+                        weaponName = weapon_dropped.Knife.Value,
+                        weaponData = game_client.content_database.getWeaponData(weapon_dropped.Knife.Value),
+                    }
+                end
             end
         end
     
         if command == "repupdate" then
             if shared.pointers["third_person"]:Get() and game_client.character_interface:isAlive() then
-                if not fake_rep_object:getThirdPersonObject() then
-                    local current_loadout = game_client.active_loadout.getActiveLoadoutData(game_client.player_data.getPlayerData())
-                    fake_rep_object:spawn(nil, current_loadout)
-                end
+                local third_person_object = fake_rep_object:getThirdPersonObject()
+                if not third_person_object then
+                    local weapon_controller = game_client.weapon_controller_interface.getController()
+                    fake_rep_object._activeWeaponRegistry[1] = {
+                        weaponName = weapon_controller._activeWeaponRegistry[1]._weaponName, 
+                        weaponData = weapon_controller._activeWeaponRegistry[1]._weaponData, 
+                        attachmentData = weapon_controller._activeWeaponRegistry[1]._weaponAttachments, 
+                        camoData = weapon_controller._activeWeaponRegistry[1]._camoList
+                    }
     
+                    fake_rep_object._activeWeaponRegistry[2] = {
+                        weaponName = weapon_controller._activeWeaponRegistry[2]._weaponName, 
+                        weaponData = weapon_controller._activeWeaponRegistry[2]._weaponData, 
+                        attachmentData = weapon_controller._activeWeaponRegistry[2]._weaponAttachments, 
+                        camoData = weapon_controller._activeWeaponRegistry[2]._camoList
+                    }
+    
+                    fake_rep_object._activeWeaponRegistry[3] = {
+                        weaponName = weapon_controller._activeWeaponRegistry[3]._weaponName, 
+                        weaponData = weapon_controller._activeWeaponRegistry[3]._weaponData, 
+                        camoData = weapon_controller._activeWeaponRegistry[3]._camoData
+                    }
+    
+                    fake_rep_object._activeWeaponRegistry[4] = {
+                        weaponName = weapon_controller._activeWeaponRegistry[4]._weaponName, 
+                        weaponData = weapon_controller._activeWeaponRegistry[4]._weaponData
+                    }
+    
+                    fake_rep_object._thirdPersonObject = game_client.third_person_object.new(fake_rep_object._player, nil, fake_rep_object)
+                    fake_rep_object._thirdPersonObject:equip(weapon_controller._activeWeaponIndex, true)
+                    fake_rep_object._alive = true
+                end
                 local clock_time = game_client.game_clock.getTime()
                 local tick = tick()
                 local velocity = Vector3.zero
-    
+
                 if fake_rep_object._receivedPosition and fake_rep_object._receivedFrameTime then
                     velocity = (arguments[1] - fake_rep_object._receivedPosition) / (tick - fake_rep_object._receivedFrameTime);
                 end
@@ -1366,7 +1432,7 @@ do -- Hooks
                     broken = true
                     fake_rep_object._breakcount = fake_rep_object._breakcount + 1
                 end
-    
+
                 fake_rep_object._smoothReplication:receive(clock_time, tick, {
                     t = tick, 
                     position = arguments[1],
@@ -1374,7 +1440,7 @@ do -- Hooks
                     angles = arguments[2], 
                     breakcount = fake_rep_object._breakcount
                 }, broken);
-    
+
                 fake_rep_object._updaterecieved = true
                 fake_rep_object._receivedPosition = arguments[1]
                 fake_rep_object._receivedFrameTime = tick
@@ -1387,7 +1453,6 @@ do -- Hooks
                     character_model:Destroy()
                     fake_rep_object:despawn()
                 end
-    
             end
         end
     
@@ -1401,7 +1466,7 @@ do -- Hooks
     
         if game_client.character_interface:isAlive() and shared.pointers["third_person"]:Get() then
             if self == ws.CurrentCamera and index == "CFrame" then
-                value *= CFrame.new(0, shared.pointers["third_person_y"]:Get(), shared.pointers["third_person_z"]:Get())
+                value *= CFrame.new(shared.pointers["third_person_x"]:Get(), shared.pointers["third_person_y"]:Get(), shared.pointers["third_person_z"]:Get())
             end
         end
     
@@ -1417,7 +1482,35 @@ do -- Third Person
     player = nil
 
     if game_client.character_interface:isAlive() and game_client.weapon_controller_interface.getController() then
-        local current_loadout = game_client.active_loadout.getActiveLoadoutData(game_client.player_data.getPlayerData()) -- Yeah it errors
-        fake_rep_object:spawn(nil, current_loadout)
+        local weapon_controller = game_client.weapon_controller_interface.getController()
+
+        fake_rep_object._activeWeaponRegistry[1] = {
+            weaponName = weapon_controller._activeWeaponRegistry[1]._weaponName, 
+            weaponData = weapon_controller._activeWeaponRegistry[1]._weaponData, 
+            attachmentData = weapon_controller._activeWeaponRegistry[1]._weaponAttachments, 
+            camoData = weapon_controller._activeWeaponRegistry[1]._camoList
+        }
+
+        fake_rep_object._activeWeaponRegistry[2] = {
+            weaponName = weapon_controller._activeWeaponRegistry[2]._weaponName, 
+            weaponData = weapon_controller._activeWeaponRegistry[2]._weaponData, 
+            attachmentData = weapon_controller._activeWeaponRegistry[2]._weaponAttachments, 
+            camoData = weapon_controller._activeWeaponRegistry[2]._camoList
+        }
+
+        fake_rep_object._activeWeaponRegistry[3] = {
+            weaponName = weapon_controller._activeWeaponRegistry[3]._weaponName, 
+            weaponData = weapon_controller._activeWeaponRegistry[3]._weaponData, 
+            camoData = weapon_controller._activeWeaponRegistry[3]._camoData
+        }
+
+        fake_rep_object._activeWeaponRegistry[4] = {
+            weaponName = weapon_controller._activeWeaponRegistry[4]._weaponName, 
+            weaponData = weapon_controller._activeWeaponRegistry[4]._weaponData
+        }
+
+        fake_rep_object._thirdPersonObject = game_client.third_person_object.new(fake_rep_object._player, nil, fake_rep_object)
+        fake_rep_object._thirdPersonObject:equip(1, true)
+        fake_rep_object._alive = true
     end
 end
